@@ -63,13 +63,38 @@ describe("buildChartOption", () => {
     expect(o.series[0].data).toHaveLength(3);
   });
 
-  it("builds a candlestick with a volume bar on a second axis", () => {
+  it("splits candlestick into a price pane and a separate volume pane", () => {
     const o = opt({ type: "candlestick", category: "day", ohlcv: "open,high,low,close,volume" });
-    expect(o.series[0].type).toBe("candlestick");
-    expect(o.series[0].data).toHaveLength(3);
-    expect(o.series[0].data[0]).toEqual([1, 3, 0.5, 2]);
-    expect(o.series[1].type).toBe("bar");
-    expect(o.series[1].yAxisIndex).toBe(1);
+    // two stacked grids — not one shared grid where volume would dominate
+    expect(o.grid).toHaveLength(2);
+    expect(o.xAxis).toHaveLength(2);
     expect(o.yAxis).toHaveLength(2);
+    expect(o.xAxis[0].gridIndex).toBe(0);
+    expect(o.xAxis[1].gridIndex).toBe(1);
+    expect(o.yAxis[0].gridIndex).toBe(0);
+    expect(o.yAxis[1].gridIndex).toBe(1);
+    // category axis even for dates: a time axis would need [time, o, c, l, h]
+    expect(o.xAxis[0].type).toBe("category");
+
+    const candle = o.series.find((s: any) => s.type === "candlestick");
+    expect(candle.xAxisIndex).toBe(0);
+    expect(candle.yAxisIndex).toBe(0);
+    expect(candle.data).toHaveLength(3);
+    // [open, close, low, high] — ECharts candlestick order
+    expect(candle.data[0]).toEqual([1, 2, 0.5, 3]);
+
+    const volume = o.series.find((s: any) => s.type === "bar");
+    expect(volume.xAxisIndex).toBe(1);
+    expect(volume.yAxisIndex).toBe(1);
+    // the zoom bar drives both panes
+    expect(o.dataZoom[0].xAxisIndex).toEqual([0, 1]);
+  });
+
+  it("uses a single grid when no volume column is configured", () => {
+    const o = opt({ type: "candlestick", category: "day", ohlcv: "open,high,low,close" });
+    expect(o.grid).toHaveLength(1);
+    expect(o.xAxis).toHaveLength(1);
+    expect(o.series).toHaveLength(1);
+    expect(o.series[0].type).toBe("candlestick");
   });
 });

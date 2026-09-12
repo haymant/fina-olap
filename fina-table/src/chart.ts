@@ -109,7 +109,82 @@ export function buildChartOption(spec: ChartSpec, rows: ChartRow[]): Record<stri
     };
   }
 
-  // line / bar / stack / candlestick share an x axis
+  // --- candlestick: two stacked panes (price + volume), one grid each --------
+  if (spec.type === "candlestick") {
+    const cols = spec.ohlcv.split(",").map((c) => c.trim()).filter(Boolean);
+    const [o, h, l, c, vol] = cols;
+    const xField = spec.zoomBy || spec.category;
+    // ECharts candlestick needs a category axis: with a time/value axis the data
+    // item must be [x, open, close, low, high]; a category axis maps the 4-tuple
+    // by index (and keeps the categorical labels).
+    const categories = xField ? unique(rows.map((r) => String(r[xField] ?? ""))) : rows.map((_, i) => String(i));
+    const axisBase = { type: "category" as const, data: categories, boundaryGap: true };
+
+    const hasVolume = Boolean(vol);
+    const bottom = spec.showZoom ? 52 : 14;
+    const grids = hasVolume
+      ? [
+          { left: 8, right: 8, top: 30, height: "56%", containLabel: true },
+          { left: 8, right: 8, top: "72%", height: "16%", containLabel: true },
+        ]
+      : [{ left: 8, right: 8, top: 30, bottom, containLabel: true }];
+
+    const xAxes = hasVolume
+      ? [
+          { ...axisBase, gridIndex: 0, axisLabel: { show: false }, axisTick: { show: false } },
+          { ...axisBase, gridIndex: 1 },
+        ]
+      : [{ ...axisBase, gridIndex: 0 }];
+
+    const yAxes = hasVolume
+      ? [
+          { type: "value" as const, scale: true, gridIndex: 0 },
+          { type: "value" as const, scale: true, gridIndex: 1, splitNumber: 2, axisLabel: { show: true } },
+        ]
+      : [{ type: "value" as const, scale: true, gridIndex: 0 }];
+
+    // ECharts candlestick expects [open, close, low, high]
+    const ohlcv = rows.map((r) => [o, c, l, h].map((col) => toNum(col ? r[col] : null) as number | null));
+    const series: Array<Record<string, unknown>> = [
+      { type: "candlestick", name: "OHLC", xAxisIndex: 0, yAxisIndex: 0, data: ohlcv },
+    ];
+    if (hasVolume) {
+      series.push({
+        type: "bar",
+        name: vol,
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: rows.map((r) => {
+          const up = (toNum(c ? r[c] : null) ?? 0) >= (toNum(o ? r[o] : null) ?? 0);
+          return {
+            value: vol ? toNum(r[vol]) : null,
+            itemStyle: { color: up ? "rgba(22,163,74,0.55)" : "rgba(220,38,38,0.55)" },
+          };
+        }),
+      });
+    }
+
+    const xAxisIndex = hasVolume ? [0, 1] : [0];
+    const dataZoom = spec.showZoom
+      ? [
+          { type: "inside", xAxisIndex, filterMode: "none" },
+          { type: "slider", xAxisIndex, bottom: 8, height: 18 },
+        ]
+      : undefined;
+
+    return {
+      tooltip,
+      legend: { type: "scroll", top: 4, data: ["OHLC", ...(hasVolume && vol ? [vol] : [])] },
+      axisPointer: { link: [{ xAxisIndex: "all" }] },
+      grid: grids,
+      xAxis: xAxes,
+      yAxis: yAxes,
+      dataZoom,
+      series,
+    };
+  }
+
+  // --- line / bar / stack share a single grid --------------------------------
   const xField = spec.zoomBy || spec.category;
   const temporal = xField ? looksTemporal(rows, xField) : false;
   const categories = xField && !temporal ? unique(rows.map((r) => r[xField])) : [];
@@ -125,40 +200,27 @@ export function buildChartOption(spec: ChartSpec, rows: ChartRow[]): Record<stri
 
   const series: Array<Record<string, unknown>> = [];
   const isStack = spec.type === "stack";
-  const baseType = spec.type === "candlestick" ? "candlestick" : isStack ? "bar" : spec.type;
+  const baseType = isStack ? "bar" : spec.type;
 
-  if (spec.type === "candlestick") {
-    const cols = spec.ohlcv.split(",").map((c) => c.trim()).filter(Boolean);
-    const [o, h, l, c, vol] = cols;
+  const seriesField = spec.seriesBy;
+  const groups = seriesField ? unique(rows.map((r) => r[seriesField])) : [null];
+  for (const g of groups) {
+    const group = g == null || !seriesField ? rows : rows.filter((r) => String(r[seriesField] ?? "") === g);
     series.push({
-      type: "candlestick",
-      name: "OHLC",
-      data: rows.map((r) => [toNum(o ? r[o] : null), toNum(h ? r[h] : null), toNum(l ? r[l] : null), toNum(c ? r[c] : null)]),
+      type: baseType,
+      name: g ?? (spec.value ?? "value"),
+      smooth: spec.smooth && baseType === "line",
+      stack: isStack ? "total" : undefined,
+      areaStyle: spec.smooth && baseType === "line" ? {} : undefined,
+      data: pairs(group, spec.value),
     });
-    if (vol) {
-      series.push({ type: "bar", name: vol, yAxisIndex: 1, data: rows.map((r, i) => [xField ? r[xField] : i, toNum(r[vol])]) });
-    }
-  } else {
-    const seriesField = spec.seriesBy;
-    const groups = seriesField ? unique(rows.map((r) => r[seriesField])) : [null];
-    for (const g of groups) {
-      const group = g == null || !seriesField ? rows : rows.filter((r) => String(r[seriesField] ?? "") === g);
-      series.push({
-        type: baseType,
-        name: g ?? (spec.value ?? "value"),
-        smooth: spec.smooth && baseType === "line",
-        stack: isStack ? "total" : undefined,
-        areaStyle: spec.smooth && baseType === "line" ? {} : undefined,
-        data: pairs(group, spec.value),
-      });
-    }
-    if (spec.axis2) {
-      series.push({ type: "line", name: spec.axis2, yAxisIndex: 1, smooth: spec.smooth, data: pairs(rows, spec.axis2) });
-    }
+  }
+  if (spec.axis2) {
+    series.push({ type: "line", name: spec.axis2, yAxisIndex: 1, smooth: spec.smooth, data: pairs(rows, spec.axis2) });
   }
 
   const yAxis: Array<Record<string, unknown>> = [{ type: "value", scale: true }];
-  if (spec.axis2 || spec.type === "candlestick") yAxis.push({ type: "value", scale: true });
+  if (spec.axis2) yAxis.push({ type: "value", scale: true });
 
   return {
     tooltip,

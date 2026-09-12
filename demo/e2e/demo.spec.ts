@@ -357,6 +357,17 @@ test("proxies /api/listTables through Next without a 404", async ({ page }) => {
   await expect(page.locator(".ft-badge strong").first()).toHaveText("_pytest");
 });
 
+test("loads parquet from a local filesystem path", async ({ page }) => {
+  await page.goto("/");
+  // first query generates the fixture at <repo>/data/sample.parquet
+  await expect(page.getByTestId("row-count")).toContainText("rows");
+  await openConfig(page);
+  await page.getByLabel("Local path or file URI").fill("data");
+  await expect(page.getByTestId("listed-table-sample")).toBeVisible({ timeout: 20000 });
+  await page.getByTestId("listed-table-sample").click();
+  await expect(page.locator(".ft-badge strong").first()).toHaveText("sample");
+});
+
 async function openConfig(page: Page) {
   const btn = page.getByRole("button", { name: "Table configuration" });
   await btn.click();

@@ -316,6 +316,39 @@ describe("FinaTable", () => {
     expect(within(groupSelect).getByRole("option", { name: "book" })).toBeTruthy();
   });
 
+  it("lists tables from a local file:// path", async () => {
+    const user = userEvent.setup();
+    const server = makeSsrmServer(TRADES);
+    const listBodies: Array<{ dataSource?: { uri?: string } }> = [];
+    const listed = {
+      ok: true,
+      tables: [{ label: "risk_wide", tableName: "risk_wide", uri: "/home/data/**/*.parquet" }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+        if (String(url).includes("listTables")) {
+          listBodies.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(
+            new Response(JSON.stringify(listed), { status: 200, headers: { "content-type": "application/json" } }),
+          );
+        }
+        return server.fetchMock(url, init);
+      }),
+    );
+    render(<FinaTable fields={FIELDS} tableName="trades" pageSize={10} height={300} />);
+    await screen.findByRole("columnheader", { name: "Portfolio" });
+
+    await user.click(screen.getByRole("button", { name: "Table configuration" }));
+    await screen.findByTestId("config-menu");
+    await user.type(screen.getByLabelText("Local path or file URI"), "file:///home/data");
+    await waitFor(() => expect(screen.getByTestId("list-tables-status")).toHaveTextContent("1 table(s)"), {
+      timeout: 2000,
+    });
+    expect(listBodies.at(-1)?.dataSource?.uri).toBe("file:///home/data");
+    expect(screen.getByTestId("listed-table-risk_wide")).toBeTruthy();
+  });
+
   it("toggles the dark/light theme on the root element", async () => {
     const user = userEvent.setup();
     renderTable();

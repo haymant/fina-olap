@@ -32,6 +32,7 @@ export function DataSourcePanel({
   onChangeTableName,
   onChangeDataSource,
 }: DataSourcePanelProps) {
+  const [uri, setUri] = useState(dataSource?.uri ?? "");
   const [bucket, setBucket] = useState(dataSource?.bucket ?? "");
   const [path, setPath] = useState(dataSource?.path ?? "");
   const [hive, setHive] = useState(dataSource?.hivePartitioning ?? true);
@@ -40,15 +41,19 @@ export function DataSourcePanel({
   const [error, setError] = useState<string | null>(null);
   const first = useRef(true);
 
-  // Push the S3 config into the spec (skip the initial mount).
+  // Push the source config into the spec (skip the initial mount).
   useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
     }
     if (!onChangeDataSource) return;
-    if (!bucket.trim() && !path.trim()) {
+    if (!uri.trim() && !bucket.trim() && !path.trim()) {
       onChangeDataSource(undefined);
+      return;
+    }
+    if (uri.trim()) {
+      onChangeDataSource({ uri: uri.trim(), hivePartitioning: hive });
       return;
     }
     onChangeDataSource({
@@ -58,31 +63,40 @@ export function DataSourcePanel({
       hivePartitioning: hive,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bucket, path, hive]);
+  }, [uri, bucket, path, hive]);
 
-  // Auto-list candidate tables when the bucket/prefix changes.
-  const runList = (b: string, p: string) => {
-    if (!b.trim()) {
+  // Auto-list candidate tables when the source (local path / bucket / prefix) changes.
+  const currentSource = (): DataSourceRef | null => {
+    if (uri.trim()) return { uri: uri.trim(), hivePartitioning: hive };
+    if (bucket.trim()) {
+      return { bucket: bucket.trim(), path: path.trim() || undefined, glob: "**/*.parquet", hivePartitioning: hive };
+    }
+    return null;
+  };
+
+  const runList = () => {
+    const target = currentSource();
+    if (!target) {
       setTables([]);
       return;
     }
     setLoading(true);
     setError(null);
-    listTables({ bucket: b.trim(), path: p.trim() || undefined, glob: "**/*.parquet" }, { endpoint })
+    listTables(target, { endpoint })
       .then((rows) => setTables(rows))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    if (!bucket.trim()) {
+    if (!uri.trim() && !bucket.trim()) {
       setTables([]);
       return;
     }
-    const timer = setTimeout(() => runList(bucket, path), 350);
+    const timer = setTimeout(runList, 350);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bucket, path, endpoint]);
+  }, [uri, bucket, path, endpoint]);
 
   const options: SourceOption[] = [
     ...sources,
@@ -121,6 +135,18 @@ export function DataSourcePanel({
       </Select>
 
       <div className="ft-field-row" style={{ marginTop: 8 }}>
+        <span className="ft-format-label">path</span>
+        <input
+          className="ft-input"
+          style={{ flex: 1 }}
+          aria-label="Local path or file URI"
+          placeholder="file:///data/lake or /mnt/lake"
+          title="A parquet file, a directory (its *.parquet), or a glob like /data/lake/**/*.parquet"
+          value={uri}
+          onChange={(e) => setUri(e.target.value)}
+        />
+      </div>
+      <div className="ft-field-row" style={{ marginTop: 6 }}>
         <span className="ft-format-label">bucket</span>
         <input
           className="ft-input"
@@ -152,13 +178,17 @@ export function DataSourcePanel({
           className="ft-icon-btn"
           style={{ fontSize: 11 }}
           aria-label="List tables"
-          onClick={() => runList(bucket, path)}
-          disabled={loading || !bucket.trim()}
+          onClick={runList}
+          disabled={loading || (!uri.trim() && !bucket.trim())}
         >
           {loading ? "listing…" : "List tables"}
         </button>
         <span style={{ fontSize: 11, color: "var(--ft-fg-muted)" }} data-testid="list-tables-status">
-          {error ? `error: ${error}` : bucket.trim() ? `${tables.length} table(s)` : "no bucket configured"}
+          {error
+            ? `error: ${error}`
+            : uri.trim() || bucket.trim()
+              ? `${tables.length} table(s)`
+              : "no path or bucket configured"}
         </span>
       </div>
       {tables.length > 0 && (

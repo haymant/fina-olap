@@ -81,10 +81,11 @@ def resolve_source(payload: SSRMRequest) -> str:
     cfg = get_storage_config()
 
     if ds and ds.uri:
-        uri = ds.uri
-        # file:// turns into a plain local path (DuckDB would otherwise try
-        # httpfs for the scheme and fail on an unresolvable host).
-        return uri.removeprefix("file://")
+        uri = ds.uri.removeprefix("file://")
+        if uri.startswith(("s3://", "gs://", "http://", "https://")):
+            return uri
+        # local path / file:// URI: expand a directory to a parquet glob
+        return _expand_local(uri, cfg)
 
     if ds and ds.bucket:
         glob_pat = ds.glob or cfg.glob_for(table)
@@ -125,12 +126,42 @@ def _glob_source(root: str, pattern: str, *, keep_glob: bool = False) -> list[st
     match; an explicit ``FINA_OLAP_PARTITION_GLOB`` returns the scanning glob so
     DuckDB reads every hive partition directory.
     """
-    matches = sorted(glob.glob(f"{os.path.join(root, pattern)}"))
-    if not matches:
-        return []
     if keep_glob:
+        # don't enumerate an (possibly recursive) partition glob just to check it
         return [os.path.join(root, pattern)]
+    matches = sorted(glob.glob(os.path.join(root, pattern)))
     return matches
+
+
+def _expand_local(source: str, cfg: StorageConfig) -> str:
+    """Normalize a local source into a DuckDB-readable path/glob.
+
+    - strips a ``file://`` prefix,
+    - expands a **directory** to its direct ``*.parquet`` files (a configured
+      ``FINA_OLAP_PARTITION_GLOB`` is used when set). Recursion is opt-in: pass
+      an explicit glob such as ``file:///data/lake/**/*.parquet``,
+    - leaves a bare file path or glob untouched.
+    """
+    path = source.removeprefix("file://")
+    if glob.has_magic(path):
+        return path
+    if os.path.isdir(path):
+        pattern = cfg.partition_glob or "*.parquet"
+        return os.path.join(path.rstrip("/"), pattern)
+    return path
+
+
+def _local_exists(source: str) -> bool:
+    """Cheap existence check that never enumerates a glob (which can hang)."""
+    if not glob.has_magic(source):
+        return Path(source).exists()
+    keep: list[str] = []
+    for segment in source.split("/"):
+        if glob.has_magic(segment):
+            break
+        keep.append(segment)
+    prefix = "/".join(keep)
+    return Path(prefix).exists() if prefix else True
 
 
 def _resolve_local(payload: SSRMRequest, table: str, cfg: StorageConfig) -> str:
@@ -264,8 +295,9 @@ class OlapEngine:
         source = resolve_source(request)
         if source.startswith(("s3://", "gs://", "http://", "https://")):
             return source
-        found = glob.has_magic(source) and bool(glob.glob(source))
-        if not found and not Path(source).exists():
+        # local filesystem: expand directories / file:// URIs into a parquet glob
+        source = _expand_local(source, get_storage_config())
+        if not _local_exists(source):
             if self.fixture_fallback:
                 logger.warning("resolved local parquet %s missing; generating fixture", source)
                 source = str(ensure_fixture(source))
@@ -314,8 +346,15 @@ class OlapEngine:
 
         schemes = ("s3://", "gs://")
         remote = bool((ds.uri and ds.uri.startswith(schemes)) or (ds.bucket and ds.bucket.startswith(schemes)))
+        single_file = False
         if ds.uri:
-            pattern = ds.uri
+            # strip file:// and normalise a local directory (direct *.parquet unless a glob is given)
+            pattern = ds.uri.removeprefix("file://")
+            if not glob.has_magic(pattern):
+                if os.path.isdir(pattern):
+                    pattern = os.path.join(pattern.rstrip("/"), ds.glob or "*.parquet")
+                elif os.path.isfile(pattern):
+                    single_file = True
         else:
             assert ds.bucket is not None
             bucket = ds.bucket.rstrip("/")
@@ -356,19 +395,22 @@ class OlapEngine:
                 continue
             dir_parts, filename = parts[:-1], parts[-1]
             stem = filename.rsplit(".", 1)[0]
-            non_hive_dirs = [p for p in dir_parts if "=" not in p]
-            if non_hive_dirs:
-                # a real directory holds the table (hive partitions may sit above it)
-                name = non_hive_dirs[-1]
-                dir_glob = "/".join("*" if "=" in p else p for p in dir_parts)
-                uri = f"{root}{dir_glob}/*.parquet"
+            if single_file:
+                name, uri = stem, file
             else:
-                # file directly under the prefix or under hive dirs only: use the stem,
-                # and glob across partitions for the same table file name
-                name = stem
-                dir_glob = "/".join("*" for _ in dir_parts)
-                prefix = f"{dir_glob}/" if dir_glob else ""
-                uri = f"{root}{prefix}{stem}*.parquet"
+                non_hive_dirs = [p for p in dir_parts if "=" not in p]
+                if non_hive_dirs:
+                    # a real directory holds the table (hive partitions may sit above it)
+                    name = non_hive_dirs[-1]
+                    dir_glob = "/".join("*" if "=" in p else p for p in dir_parts)
+                    uri = f"{root}{dir_glob}/*.parquet"
+                else:
+                    # file directly under the prefix or under hive dirs only: use the stem,
+                    # and glob across partitions for the same table file name
+                    name = stem
+                    dir_glob = "/".join("*" for _ in dir_parts)
+                    prefix = f"{dir_glob}/" if dir_glob else ""
+                    uri = f"{root}{prefix}{stem}*.parquet"
             name = _table_identifier(name)
             tables.setdefault(name, {"label": name, "tableName": name, "uri": uri})
         return sorted(tables.values(), key=lambda t: t["tableName"])

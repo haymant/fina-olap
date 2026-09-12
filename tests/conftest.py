@@ -26,3 +26,25 @@ def engine() -> object:
     from fina_olap.engine import OlapEngine
 
     return OlapEngine()
+
+
+@pytest.fixture(autouse=True)
+def _reset_storage_config():
+    """Clear runtime overrides and re-read env around every test.
+
+    Env vars set via ``monkeypatch`` are restored *after* a test's own
+    ``finally`` reload, which would otherwise leave the memoized storage config
+    (e.g. a test partition glob) leaking into later tests.
+    """
+    from fina_olap.storage import clear_storage_override, reload_storage_config
+
+    def _reset() -> None:
+        clear_storage_override()
+        try:
+            reload_storage_config()
+        except ValueError:
+            pass  # env may momentarily hold an invalid store set by a test
+
+    _reset()
+    yield
+    _reset()

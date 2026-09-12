@@ -79,9 +79,17 @@ Partition configuration:
   `s3`/`gcs`, off for local; may be overridden via `dataSource.hivePartitioning`
   per payload.
 
+Local filesystem sources are first-class: `dataSource.uri` may be a plain path
+(`/home/data/foo.parquet`), a `file://` URI (`file:///data/lake`), a directory
+(its direct `*.parquet` files; pass an explicit glob like
+`file:///data/lake/**/*.parquet` to recurse, which honours
+`FINA_OLAP_PARTITION_GLOB`), or a glob. Directory expansion is non-recursive by
+default so pointing at a large tree can't hang the server.
+`POST /api/listTables` lists candidate tables for local paths too (directory
+names / parquet file stems become table names).
+
 Remote stores use DuckDB `httpfs` with an S3-compatible secret (GCS via
-`S3_API_KEY`/`S3_API_SECRET` or AWS via `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`
-+ `AWS_ENDPOINT_URL`), configured automatically when store env vars are present.
+`S3_API_KEY`/`S3_API_SECRET` or AWS via `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`+ `AWS_ENDPOINT_URL`), configured automatically when store env vars are present.
 `GET /api/health` (and the MCP `status` tool) report the active store config.
 
 ### Runtime store configuration (MCP tools)

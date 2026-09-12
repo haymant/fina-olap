@@ -149,7 +149,14 @@ export function FinaTable(props: FinaTableProps) {
     return order.map((field) => declaredMap.get(field) ?? { field, label: field, kind: inferFieldKind(field, samples) });
   }, [fields, seen, sourceKey, ssrm.columns, ssrm.displayRows]);
 
-  const labelByField = useMemo(() => new Map(panelFields.map((f) => [f.field, f])), [panelFields]);
+  // Column labels/kinds always resolve against the declared fields too, so
+  // pivot aliases (`funding_gamma`) keep their measure label/kind even though
+  // the config panels may show only the loaded columns.
+  const labelByField = useMemo(() => {
+    const m = new Map(panelFields.map((f) => [f.field, f]));
+    for (const f of fields) if (!m.has(f.field)) m.set(f.field, f);
+    return m;
+  }, [panelFields, fields]);
 
   const toggleView = () => {
     if (view === "table") {
