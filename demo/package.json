@@ -1,0 +1,30 @@
+{
+  "name": "fina-olap-demo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Next.js demo for the fina-olap server + fina-table client.",
+  "type": "module",
+  "scripts": {
+    "setup": "node scripts/generate-fixture.mjs",
+    "dev": "concurrently -n api,demo -k \"uv --directory .. run uvicorn fina_olap.server:app --host 127.0.0.1 --port 8787\" \"next dev\"",
+    "build": "next build",
+    "start": "next start",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "fina-table": "file:../fina-table",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.2"
+  }
+}

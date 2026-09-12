@@ -1,0 +1,8 @@
+.venv
+.venv/**
+*.duckdb
+*.duckdb/**
+tests
+fina-table
+demo
+.tmp

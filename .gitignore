@@ -1,0 +1,39 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data / logs
+data/*.parquet
+data/*.duckdb
+*.duckdb
+logs/
+coverage.json
+
+# Node (fina-table / demo)
+node_modules/
+.finarc
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+demo/.env.local
+test-results/
+playwright-report/
+blob-report/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+.env
+.tmp
