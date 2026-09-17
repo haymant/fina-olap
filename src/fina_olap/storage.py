@@ -13,8 +13,8 @@ The resolution honours, in decreasing priority:
                                 branch and fails loudly when it is unconfigured
                                 (no silent fixture fallback).
 - ``FINA_OLAP_PARQUET_ROOT``   — local Parquet root (aliases: ``OLAP_PARQUET_ROOT``,
-                                ``DATA_DIR``). When unset, ``TAC_LAKE_DIR`` resolves
-                                to its ``reports`` subdirectory.
+                                ``DATA_DIR``). When unset, ``TAC_DATA_DIR`` or
+                                ``TAC_LAKE_DIR`` resolves to its ``reports`` subdirectory.
 - ``FINA_OLAP_BUCKET``         — object-store bucket (aliases: ``S3_BUCKET_NAME``
                                 / ``AWS_BUCKET``; gcs honours ``GCS_BUCKET_NAME``).
 - ``FINA_OLAP_PATH``           — default prefix under the bucket (alias ``S3_PATH_ENV``);
@@ -132,7 +132,7 @@ def get_storage_config() -> StorageConfig:
 @lru_cache(maxsize=1)
 def _build_storage_config() -> StorageConfig:
     root = _first(*_ALIASES["root"])
-    tac_lake_dir = _first("TAC_LAKE_DIR")
+    tac_lake_dir = _first("TAC_DATA_DIR", "TAC_LAKE_DIR")
     if not root and tac_lake_dir:
         root = os.path.join(tac_lake_dir, "reports")
     bucket = _first(*_ALIASES["bucket"]) or _first("GCS_BUCKET_NAME")
