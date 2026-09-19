@@ -335,6 +335,9 @@ test("switches to chart view and configures its axes", async ({ page }) => {
 
 test("proxies /api/listTables through Next without a 404", async ({ page }) => {
   await page.goto("/");
+  if (!(await objectStoreConfigured(page))) {
+    test.skip(true, "no object store configured in this environment");
+  }
   await openConfig(page);
   await page.getByLabel("S3 bucket").fill("s3://fina-olap-test");
   const status = page.getByTestId("list-tables-status");
@@ -376,4 +379,11 @@ async function openConfig(page: Page) {
 
 async function select(page: Page, label: string, value: string) {
   await page.getByLabel(label).selectOption(value);
+}
+
+/** True when the backend has real object-store credentials (e.g. AWS in CI). */
+async function objectStoreConfigured(page: Page): Promise<boolean> {
+  const res = await page.request.get(`${new URL("/", page.url()).origin}/api/health`);
+  const body = (await res.json()) as { object_store?: { configured?: boolean } };
+  return body.object_store?.configured === true;
 }
