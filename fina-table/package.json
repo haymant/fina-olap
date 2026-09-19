@@ -42,6 +42,10 @@
     "theme"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haymant/fina-olap"
+  },
   "dependencies": {
     "dayjs": ">=1.11"
   },

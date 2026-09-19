@@ -1,6 +1,6 @@
 """fina-olap: ag-grid SSRM OLAP engine over Parquet (S3/GCS/local), DuckDB-powered."""
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 from .builder import BuiltQuery, DuckDBSqlBuilder, default_agg
 from .engine import OlapEngine, resolve_source
