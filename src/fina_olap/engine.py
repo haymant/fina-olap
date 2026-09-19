@@ -312,9 +312,13 @@ class OlapEngine:
         # still flow through prepared parameters downstream.
         literal = source.replace("'", "''")
         hive_sql = str(hive).upper()
+        # union_by_name=true exposes the superset schema across overlapping
+        # parquet files (e.g. hive partitions written by different report
+        # versions with drifting columns), so queries over newer columns never
+        # fail with "Referenced column not found" on older partitions.
         sql = (
             f'CREATE OR REPLACE VIEW "{table}" AS '
-            f"SELECT * FROM read_parquet('{literal}', hive_partitioning = {hive_sql})"
+            f"SELECT * FROM read_parquet('{literal}', hive_partitioning = {hive_sql}, union_by_name = true)"
         )
         con.execute(sql)
 

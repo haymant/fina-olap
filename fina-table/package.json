@@ -1,6 +1,6 @@
 {
   "name": "fina-table",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Self-contained React table for ag-grid Server-Side Row Model OLAP engines (fina-olap) — remembered grouping, infinite scroll, dark/light themes, per-level aggregations and a 4-panel config dropdown.",
   "type": "module",
   "main": "./dist/index.cjs",

@@ -30,7 +30,9 @@ from .storage import (
     get_storage_config,
     set_storage_override,
     storage_overrides,
-    storage_status,
+)
+from .storage import (
+    storage_status as storage_status_view,
 )
 from .upsert import partition_columns
 from .upsert import upsert_store as upsert_into_store
@@ -61,7 +63,7 @@ async def healthz(_request: Any) -> JSONResponse:
         {
             "status": "ok",
             "service": "fina-olap",
-            "store": storage_status(),
+            "store": storage_status_view(),
             "object_store": object_store_status(),
             "fixture": summary(os.getenv("FINA_OLAP_FIXTURE", "data/sample.parquet")),
         }
@@ -112,10 +114,46 @@ def get_rows(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
+def describe(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the DESCRIBE schema (name, type, numeric) of the table a payload will query."""
+    request = SSRMRequest.model_validate(payload)
+    columns = _engine.schema_for(request)
+    return {"table": request.tableName or "trades", "columns": columns}
+
+
+@mcp.tool()
+def storage_status() -> dict[str, Any]:
+    """Non-secret store diagnostics: backend, local root, bucket, partition glob, hive flag."""
+    return storage_status_view()
+
+
+@mcp.tool()
+def export_rows(
+    table_name: str = DEFAULT_TABLE,
+    out_path: str = "",
+    data_format: str = "auto",
+    columns: str = "",
+    filters: dict[str, Any] | None = None,
+    limit: int = 0,
+) -> dict[str, Any]:
+    """Export ``table_name`` rows to a CSV / JSON / JSONL / Parquet file (see ``store_export``)."""
+    if not out_path:
+        raise ValueError("export_rows requires out_path")
+    return store_export(
+        table_name=table_name,
+        out_path=out_path,
+        data_format=data_format,
+        columns=columns,
+        filters=filters,
+        limit=limit,
+    )
+
+
+@mcp.tool()
 def status() -> dict[str, Any]:
     """Engine status: active store config, object-store connectivity, fixture availability."""
     return {
-        "store": storage_status(),
+        "store": storage_status_view(),
         "object_store": object_store_status(),
         "fixture": summary(os.getenv("FINA_OLAP_FIXTURE", "data/sample.parquet")),
     }
@@ -128,7 +166,7 @@ def store_config() -> dict[str, Any]:
     ``overrides`` lists fields switched at runtime via ``store_configure`` (they
     sit on top of the env-var base and persist until ``store_configure(clear=true)``).
     """
-    return {"store": storage_status()}
+    return {"store": storage_status_view()}
 
 
 @mcp.tool()
@@ -166,7 +204,7 @@ def store_configure(
         changes["hive_partitioning"] = hive_partitioning
     if changes:
         set_storage_override(**changes)
-    return {"store": storage_status()}
+    return {"store": storage_status_view()}
 
 
 @mcp.tool()

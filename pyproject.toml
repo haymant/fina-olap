@@ -1,6 +1,6 @@
 [project]
 name = "fina-olap"
-version = "0.2.0"
+version = "0.3.0"
 description = "ag-grid Server-Side Row Model OLAP engine over Parquet (S3/GCS/local) powered by DuckDB — with a lean HTTP server, an MCP v2 tool server and a Vercel serverless deployment target"
 readme = "README.md"
 requires-python = ">=3.12"

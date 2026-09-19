@@ -493,6 +493,45 @@ def test_response_serializer_coerces_datetimes(engine: OlapEngine) -> None:
     json.dumps(dumped)  # must not raise
 
 
+def test_union_by_name_across_hive_partitions(tmp_path):
+    """Partitions with drifting schemas union by name so newer columns query cleanly.
+
+    Regression: the riskcube_cells backing is a hive-partitioned glob of report
+    parquets whose column set grows across versions. Without ``union_by_name``
+    DuckDB binds to the first partition's schema and later columns fail with
+    ``Binder Error: Referenced column "pv" not found``.
+    """
+    (tmp_path / "slice=A" / "version=1").mkdir(parents=True)
+    (tmp_path / "slice=A" / "version=2").mkdir(parents=True)
+    pd.DataFrame({"instrument_id": ["FCN"], "delta": [1.0]}).to_parquet(
+        tmp_path / "slice=A" / "version=1" / "cells.parquet"
+    )
+    pd.DataFrame({"instrument_id": ["FCN"], "delta": [2.0], "pv": [10.0]}).to_parquet(
+        tmp_path / "slice=A" / "version=2" / "cells.parquet"
+    )
+
+    payload = {
+        "tableName": "riskcube_cells",
+        "dataSource": {"uri": f"{tmp_path}/**/*.parquet", "hivePartitioning": True},
+        "rowGroupCols": [{"id": "instrument_id", "field": "instrument_id"}],
+        "valueCols": [
+            {"id": "delta", "aggFunc": "sum", "field": "delta"},
+            {"id": "pv", "aggFunc": "sum", "field": "pv"},
+        ],
+        "groupKeys": [],
+        "startRow": 0,
+        "endRow": 500,
+    }
+    resp = OlapEngine().query(payload)
+    assert resp.success, resp.error
+    assert len(resp.rows) == 1
+    row = resp.rows[0]
+    assert row["instrument_id"] == "FCN"
+    # delta exists in both partitions; pv only in v2 (NULLs ignored by sum)
+    assert row["delta"] == 3.0
+    assert row["pv"] == 10.0
+
+
 def test_grand_total_with_no_measures_is_harmless(engine: OlapEngine) -> None:
     """includeGrandTotal with no groups/values must not emit an empty SELECT."""
     resp = run(

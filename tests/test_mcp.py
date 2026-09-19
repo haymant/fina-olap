@@ -60,6 +60,9 @@ def test_mcp_stdio_tools_listed():
     names = asyncio.run(asyncio.wait_for(_list_tools(), ASYNC_TIMEOUT))
     assert {"generate_fixture", "get_rows", "dataset_schema", "list_datasets", "status"} <= names
     assert {"store_config", "store_configure", "store_resolve", "upsert_store", "store_export"} <= names
+    # finap adapter contract: the tool surface finap calls through FINA_OLAP_TOOLS
+    # must exist on the server (describe / storage_status / export_rows).
+    assert {"describe", "storage_status", "export_rows"} <= names
 
 
 def test_mcp_stdio_query_roundtrip(tmp_path):
