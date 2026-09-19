@@ -1,7 +1,21 @@
 import { useEffect, useRef } from "react";
-import type { ECharts } from "echarts";
 
 import { buildChartOption, type ChartRow, type ChartSpec } from "./chart";
+
+/**
+ * Structural subset of the echarts API. We deliberately avoid a static
+ * `import type ... from "echarts"` so echarts stays a fully optional peer
+ * dependency — consumers who never render the chart view get no TS module
+ * error and no dependency, and the runtime import below stays lazy.
+ */
+type EChartsModule = {
+  init: (el: HTMLElement) => EChartsInstance;
+};
+type EChartsInstance = {
+  setOption: (option: unknown, notMerge?: boolean) => void;
+  resize: () => void;
+  dispose: () => void;
+};
 
 /**
  * ECharts host. echarts is imported lazily (dynamic `import`) so apps that
@@ -9,7 +23,7 @@ import { buildChartOption, type ChartRow, type ChartSpec } from "./chart";
  */
 export function ChartView({ spec, rows }: { spec: ChartSpec; rows: ChartRow[] }) {
   const ref = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<ECharts | null>(null);
+  const chartRef = useRef<EChartsInstance | null>(null);
   const latest = useRef({ spec, rows });
   latest.current = { spec, rows };
 
